@@ -14,6 +14,7 @@ const uploadUrl = '';
 const mergeUrl = '';
 const token = '';
 const retryMax = 5;
+const tempThreads = 6;
 const contentType = 'application/x-www-form-urlencoded';
 
 function handleFileChange () {
@@ -25,7 +26,7 @@ function handleFileChange () {
         fileReader = new FileReader();
     uploadFile.file = this.files[0];
     fileReader.onload = function (e) {
-      console.warn('read chunk nr', currentChunk + 1, 'of', chunks, );
+      // console.warn('read chunk nr', currentChunk + 1, 'of', chunks, );
       createFileChunk(spark.end(), e.target.result);
       spark.append(e.target.result);
       currentChunk++;
@@ -34,7 +35,7 @@ function handleFileChange () {
       } else {
         uploadFile.fileHash = spark.end();
         uploadFileChunks();
-        console.warn('computed hash', spark.end());
+        // console.warn('computed hash', spark.end());
       }
     };
         
@@ -63,7 +64,7 @@ function createFileChunk(hash, hashFile) {
     file: hashFile,
     status: fileUploadStatus.pending //pending,uploading,success,fail
   });
-  console.log('uploadFile -> uploadFile', uploadFile);
+  // console.log('uploadFile -> uploadFile', uploadFile);
   return uploadFile;
 }
 
@@ -74,7 +75,7 @@ function createFileChunk(hash, hashFile) {
 function uploadFileChunks() {
   const chunkData = uploadFile.chunkList;
   const fileName = uploadFile.file.name;
-  return  new Promise(async (resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     const requestDataList = chunkData.map(({index, hash, file}) => {
       const formData = new FormData();
       formData.append('md5', hash);
@@ -82,10 +83,12 @@ function uploadFileChunks() {
       formData.append('index', index);
       return { formData, index, fileName };
     });
+    console.warn('requestDataList', requestDataList);
     try {
       const result = await sendRequest(requestDataList);
       console.warn(result);
     } catch (error) {
+      console.warn(error);
       throw new Error(error);
     }
   });
@@ -97,6 +100,7 @@ function uploadFileChunks() {
  * 
 */
 function sendRequest(forms) {
+  console.warn('发送上传请求', forms, forms.length)
   let finished = 0;
   const total = forms.length;
   return new Promise((resolve, reject) => {
@@ -105,8 +109,9 @@ function sendRequest(forms) {
         const formInfo = forms.shift();
         const formData = formInfo.file;
         const index = formInfo.index;
+        console.warn(formInfo, formData, index);
         fetchHttp(formData).then(res => {
-          console.warn(`上传成功chunk${formInfo.hash}`);
+          console.warn(`上传成功chunk${formInfo.hash}`,res);
           uploadFile.chunkList[index].status = fileUploadStatus.success;
           finished ++;
           addChunkLocalStorage();
@@ -124,6 +129,9 @@ function sendRequest(forms) {
         resolve('done');
       }
     }
+    for(let i = 0;i < tempThreads;i ++) {
+      handler();
+    }
   })
 }
 
@@ -134,6 +142,7 @@ function sendRequest(forms) {
  * @param {Object} data
 */
 function fetchHttp(url = uploadUrl, type = contentType, data) {
+  console.warn('fetchHttp', url, type, data)
   return fetch(url, {
     headers: {
       'token': token,
@@ -165,17 +174,17 @@ function clearChunkLocalStorage() {
 */
 function retry(fn, maxNum) {
   return new Promise((resolve, reject) => {
-    function sendRequest() {
+    function send() {
       fn().then(res => {
         console.warn('retry', res);
       })
       .catch(err => {
         if(maxNum === 0) reject(err);
         maxNum --;
-        sendRequest();
+        send();
       })
     }
-    sendRequest();
+    send();
   })
 }
 
